@@ -67,29 +67,29 @@ function LineupBuilder({
     select: d => d.players,
   });
 
-  // Auto-populate from default lineup the first time players load
-  const hasAutoPopulated = useRef(false);
+  // Auto-populate when team changes or players first load for this team
+  const lastAutoTeamId = useRef<number | null>(null);
   useEffect(() => {
-    if (hasAutoPopulated.current || (players as Player[]).length === 0) return;
-    hasAutoPopulated.current = true;
-
     const typed = players as Player[];
-    // Players with a saved order come first; fill remainder alphabetically
+    if (typed.length === 0 || lastAutoTeamId.current === team.id) return;
+    lastAutoTeamId.current = team.id;
+
+    // Players with a saved order come first; fill remainder with non-pitchers alphabetically
     const ordered = typed
       .filter(p => p.default_batting_order > 0)
       .sort((a, b) => a.default_batting_order - b.default_batting_order);
     const unordered = typed
-      .filter(p => !p.default_batting_order)
+      .filter(p => !p.default_batting_order && !p.positions.includes('P'))
       .sort((a, b) => a.name.localeCompare(b.name));
 
     const all = [...ordered, ...unordered].slice(0, 9);
     onChange(all.map((p, i) => ({
       player_id: p.id,
       player_name: p.name,
-      position: p.default_position || p.positions[0] || '',
+      position: p.default_position || p.positions.find(pos => pos !== 'P') || p.positions[0] || '',
       batting_order: i + 1,
     })));
-  }, [players]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [players, team.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const sensors = useSensors(
     useSensor(PointerSensor),
