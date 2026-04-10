@@ -1,5 +1,5 @@
 import { apiFetch } from './client';
-import { League } from '../types';
+import { League, LeagueStats } from '../types';
 
 export const leaguesApi = {
   list: () => apiFetch<League[]>('/leagues'),
@@ -12,4 +12,5 @@ export const leaguesApi = {
     apiFetch<void>(`/leagues/${id}`, { method: 'DELETE' }),
   setTeams: (id: number, teamIds: number[]) =>
     apiFetch<{ ok: boolean }>(`/leagues/${id}/teams`, { method: 'PUT', body: JSON.stringify({ team_ids: teamIds }) }),
+  stats: (id: number) => apiFetch<LeagueStats>(`/leagues/${id}/stats`),
 };

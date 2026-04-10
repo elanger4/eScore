@@ -24,6 +24,9 @@ export interface Player {
   active: number; // 1 = active, 0 = inactive
   default_batting_order: number; // 0 = not in default lineup
   default_position: string;
+  defensive_rating: string;
+  stealing: string;
+  running: string;
 }
 
 export interface Game {
@@ -46,6 +49,9 @@ export interface LineupEntry {
   is_starter: number;
   player_name?: string;
   jersey_number?: string;
+  defensive_rating?: string;
+  stealing?: string;
+  running?: string;
 }
 
 export type PlayType =
@@ -56,6 +62,7 @@ export type PlayType =
   | 'mid_pa_wp'
   | 'mid_pa_pb'
   | 'mid_pa_bk'
+  | 'mid_pa_e'
   | 'substitution'
   | 'inning_end'
   | 'game_end';

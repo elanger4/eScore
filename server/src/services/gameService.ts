@@ -19,7 +19,8 @@ export function computeGameState(gameId: number): GameState {
   // Load starters with player names joined.
   // batting_order=0 means "pitcher not in batting lineup" (DH rule) — sort them last.
   const lineupSql = `
-    SELECT l.*, p.name as player_name, p.jersey_number
+    SELECT l.*, p.name as player_name, p.jersey_number,
+           p.defensive_rating, p.stealing, p.running
     FROM lineups l JOIN players p ON p.id = l.player_id
     WHERE l.game_id = ? AND l.team_id = ?
     ORDER BY CASE WHEN l.batting_order = 0 THEN 9999 ELSE l.batting_order END
@@ -148,16 +149,25 @@ function applySubstitution(
   const defenseLineup = offenseTeamId === awayTeamId ? homeLineup : awayLineup;
   const lineup = isOffenseSub ? offenseLineup : defenseLineup;
 
-  const inPlayer = db.prepare('SELECT name, jersey_number FROM players WHERE id = ?')
-    .get(inId) as { name: string; jersey_number: string } | undefined;
+  const inPlayer = db.prepare('SELECT name, jersey_number, defensive_rating, stealing, running FROM players WHERE id = ?')
+    .get(inId) as { name: string; jersey_number: string; defensive_rating: string; stealing: string; running: string } | undefined;
+
+  const inPlayerFields = {
+    player_id: inId,
+    player_name: inPlayer?.name,
+    jersey_number: inPlayer?.jersey_number,
+    defensive_rating: inPlayer?.defensive_rating,
+    stealing: inPlayer?.stealing,
+    running: inPlayer?.running,
+  };
 
   if (subType === 'bat' || subType === 'run') {
     const idx = lineup.findIndex(e => e.player_id === outId);
     if (idx === -1) return;
-    lineup[idx] = { ...lineup[idx], player_id: inId, player_name: inPlayer?.name, jersey_number: inPlayer?.jersey_number };
+    lineup[idx] = { ...lineup[idx], ...inPlayerFields };
   } else if (subType === 'pitch') {
     const pitcherIdx = lineup.findIndex(e => e.position === 'P');
-    if (pitcherIdx !== -1) lineup[pitcherIdx] = { ...lineup[pitcherIdx], player_id: inId, player_name: inPlayer?.name, jersey_number: inPlayer?.jersey_number };
+    if (pitcherIdx !== -1) lineup[pitcherIdx] = { ...lineup[pitcherIdx], ...inPlayerFields };
   } else if (subType === 'field') {
     const outIdx = lineup.findIndex(e => e.player_id === outId);
     if (outIdx === -1) return;
@@ -170,7 +180,7 @@ function applySubstitution(
       lineup[outIdx] = { ...lineup[outIdx], position: prevPos };
     } else if (inIdx === -1) {
       // Bench player coming in — replace the out-player's slot
-      lineup[outIdx] = { ...lineup[outIdx], player_id: inId, player_name: inPlayer?.name, jersey_number: inPlayer?.jersey_number, position };
+      lineup[outIdx] = { ...lineup[outIdx], ...inPlayerFields, position };
     }
   }
 }

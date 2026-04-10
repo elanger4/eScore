@@ -20,6 +20,9 @@ export interface Player {
   active: number;
   default_batting_order: number; // 0 = not in default lineup
   default_position: string;
+  defensive_rating: string;
+  stealing: string;
+  running: string;
 }
 
 export interface League {
@@ -59,6 +62,9 @@ export interface LineupEntry {
   positions?: string[];
   bats?: string;
   throws?: string;
+  defensive_rating?: string;
+  stealing?: string;
+  running?: string;
 }
 
 export type PlayType =
@@ -69,6 +75,7 @@ export type PlayType =
   | 'mid_pa_wp'
   | 'mid_pa_pb'
   | 'mid_pa_bk'
+  | 'mid_pa_e'
   | 'substitution'
   | 'inning_end'
   | 'game_end';
@@ -178,6 +185,43 @@ export interface BoxScore {
   pitching: {
     away: PitcherLine[];
     home: PitcherLine[];
+  };
+}
+
+export interface LeaderEntry {
+  player_id: number;
+  player_name: string;
+  team_abbr: string;
+  value: string;
+}
+
+export interface TeamStanding {
+  team_id: number;
+  team_name: string;
+  team_abbr: string;
+  wins: number;
+  losses: number;
+  pct: string;
+  gb: string;
+  rs: number;
+  ra: number;
+}
+
+export interface LeagueStats {
+  standings: TeamStanding[];
+  games_played: number;
+  batting_leaders: {
+    hr: LeaderEntry[];
+    rbi: LeaderEntry[];
+    avg: LeaderEntry[];
+    ops: LeaderEntry[];
+    h: LeaderEntry[];
+    sb: LeaderEntry[];
+  };
+  pitching_leaders: {
+    era: LeaderEntry[];
+    so: LeaderEntry[];
+    ip: LeaderEntry[];
   };
 }
 

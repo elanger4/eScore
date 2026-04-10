@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gamesApi } from '../api/games';
 import { GameState, Play, LineupEntry, RunnerState } from '../types';
 import { displayText, outsOnPlay } from '../lib/playParser';
-import Diamond from '../components/scoring/Diamond';
+import FieldView from '../components/scoring/FieldView';
 import ResultPicker from '../components/scoring/ResultPicker';
 import MidPAPanel from '../components/scoring/MidPAPanel';
 import SubstitutionModal from '../components/scoring/SubstitutionModal';
@@ -93,31 +93,30 @@ export default function ScoringPage() {
 
   const offenseTeamId = state.half === 'top' ? gameInfo?.away_team_id : gameInfo?.home_team_id;
   const currentLineup = state.half === 'top' ? state.away_lineup : state.home_lineup;
-  const currentBatterEntry = currentLineup.find(e => e.player_id === state.current_batter_id);
   const pitchingLineup = state.half === 'top' ? state.home_lineup : state.away_lineup;
-  const currentPitcherEntry = pitchingLineup.find(e => e.player_id === state.current_pitcher_id);
 
   // ── At-bat result selection ──────────────────────────────────────────────
 
   function handleResultSelect(resultCode: string, dispText: string) {
     if (!state) return;
-    // HR: everyone scores automatically — skip the modal
-    if (resultCode === 'HR') {
-      const { runners_after, runs_on_play, scored_runner_ids } = computeAtBatOutcome(
-        'HR', state.runners, state.current_batter_id,
-      );
-      submitAtBat('HR', 'HR', runners_after, runs_on_play, scored_runner_ids);
-      return;
-    }
+
     const hasRunners = Object.values(state.runners).some(v => v !== null);
-    if (hasRunners) {
-      setPendingResult({ resultCode, dispText });
-    } else {
+
+    // Results where runners stay put / have a deterministic outcome — no modal needed
+    const isAutoResult =
+      resultCode === 'HR' ||
+      ['K', 'KL', 'BB', 'IBB', 'HBP'].includes(resultCode) ||
+      (state.outs + outsOnPlay(resultCode) >= 3); // inning ends — stranded runners don't matter
+
+    if (!hasRunners || isAutoResult) {
       const { runners_after, runs_on_play, scored_runner_ids } = computeAtBatOutcome(
         resultCode, state.runners, state.current_batter_id,
       );
       submitAtBat(resultCode, dispText, runners_after, runs_on_play, scored_runner_ids);
+      return;
     }
+
+    setPendingResult({ resultCode, dispText });
   }
 
   function submitAtBat(
@@ -337,6 +336,51 @@ export default function ScoringPage() {
     });
   }
 
+  function submitRunnerAdvance(
+    type: 'bk' | 'wp' | 'pb' | 'e',
+    fromBase: string,
+    toBase: string,
+    runnerId: number,
+  ) {
+    if (!state || !offenseTeamId) return;
+    setRunnerAction(null);
+
+    const runnersAfter: RunnerState = { ...state.runners };
+    runnersAfter[fromBase] = null;
+    const scored = toBase === 'H';
+    if (!scored) runnersAfter[toBase] = runnerId;
+
+    const playTypeMap = { bk: 'mid_pa_bk', wp: 'mid_pa_wp', pb: 'mid_pa_pb', e: 'mid_pa_e' } as const;
+    const codeMap = { bk: 'BK', wp: 'WP', pb: 'PB', e: 'E' };
+    const labelMap = { bk: 'Balk', wp: 'Wild Pitch', pb: 'Passed Ball', e: 'Error' };
+    const destLabel = toBase === 'H' ? 'home' : toBase === '2' ? '2nd' : toBase === '3' ? '3rd' : '1st';
+
+    addPlay.mutate({
+      play_type: playTypeMap[type],
+      pitcher_id: state.current_pitcher_id,
+      result_code: `${codeMap[type]}:${runnerId}:${fromBase}:${toBase}`,
+      runners_before: state.runners,
+      runners_after: runnersAfter,
+      outs_before: state.outs,
+      outs_on_play: 0,
+      runs_on_play: scored ? 1 : 0,
+      scored_runner_ids: scored ? [runnerId] : [],
+      inning: state.inning,
+      half: state.half,
+      offense_team_id: offenseTeamId,
+      display_text: `${labelMap[type]} (runner →${destLabel})`,
+      rbi: 0,
+      earned: type === 'e' ? 0 : 1,
+    }, {
+      onSuccess: async ({ state: newState }) => {
+        const gameInnings = gameInfo?.innings ?? 9;
+        if (isWalkOff(state.half, state.inning, newState.home_score, newState.away_score, gameInnings)) {
+          endGame.mutate();
+        }
+      },
+    });
+  }
+
   const recentPlays = (plays as Play[]).slice(-8).reverse();
   const allPlayers = [...state.away_lineup, ...state.home_lineup];
 
@@ -381,33 +425,33 @@ export default function ScoringPage() {
 
           {/* Center scoring panel */}
           <div className="flex flex-col gap-4">
-            {/* Diamond + matchup */}
-            <div className="card flex items-center gap-6">
-              <Diamond
+            {/* Field view */}
+            <div className="card p-2">
+              <FieldView
                 runners={state.runners}
-                outs={state.outs}
+                battingLineup={currentLineup}
+                fieldingLineup={pitchingLineup}
+                currentBatterId={state.current_batter_id}
                 onRunnerClick={handleRunnerClick}
               />
-              <div className="flex-1">
-                <div className="mb-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">At Bat</div>
-                  <div className="text-xl font-black text-white">
-                    {currentBatterEntry?.player_name ?? '—'}
-                  </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">
-                    {currentBatterEntry?.position} · {state.half === 'top' ? gameInfo?.away_abbr : gameInfo?.home_abbr}
-                  </div>
+              {(['3', '2', '1'] as const).some(b => state.runners[b]) && (
+                <div className="flex gap-3 pt-1.5 px-1 flex-wrap">
+                  {(['3', '2', '1'] as const).map(base => {
+                    const runnerId = state.runners[base];
+                    if (!runnerId) return null;
+                    const runner = allPlayers.find(e => e.player_id === runnerId);
+                    const baseLabel = base === '1' ? '1st' : base === '2' ? '2nd' : '3rd';
+                    return (
+                      <div key={base} className="flex items-center gap-1.5 text-[10px] font-mono leading-none">
+                        <span className="text-slate-500">{baseLabel}</span>
+                        <span className="text-yellow-300/90 truncate max-w-[70px]">{runner?.player_name ?? `#${runnerId}`}</span>
+                        {runner?.stealing && <span className="text-sky-400">SB:{runner.stealing}</span>}
+                        {runner?.running && <span className="text-emerald-400">SPD:{runner.running}</span>}
+                      </div>
+                    );
+                  })}
                 </div>
-                <div>
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1">Pitching</div>
-                  <div className="text-base font-bold text-slate-300">
-                    {currentPitcherEntry?.player_name ?? '—'}
-                  </div>
-                  <div className="text-xs text-slate-500 font-mono mt-0.5">
-                    P · {state.half === 'top' ? gameInfo?.home_abbr : gameInfo?.away_abbr}
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
 
             {/* Earned + undo row */}
@@ -556,6 +600,7 @@ export default function ScoringPage() {
           runnerId={runnerAction.runnerId}
           runnerName={allPlayers.find(e => e.player_id === runnerAction.runnerId)?.player_name}
           onSubmit={submitRunnerEvent}
+          onAdvance={submitRunnerAdvance}
           onClose={() => setRunnerAction(null)}
         />
       )}
@@ -563,24 +608,40 @@ export default function ScoringPage() {
   );
 }
 
-// ── Runner Action Panel (SB / CS) ────────────────────────────────────────────
+// ── Runner Action Panel (SB / CS / Advance) ──────────────────────────────────
 
 function RunnerActionPanel({
-  base, runnerId, runnerName, onSubmit, onClose,
+  base, runnerId, runnerName, onSubmit, onAdvance, onClose,
 }: {
   base: string;
   runnerId: number;
   runnerName?: string;
   onSubmit: (type: 'sb' | 'cs', fromBase: string, toBase: string, runnerId: number) => void;
+  onAdvance: (type: 'bk' | 'wp' | 'pb' | 'e', fromBase: string, toBase: string, runnerId: number) => void;
   onClose: () => void;
 }) {
-  const baseLabel = base === '1' ? 'first' : base === '2' ? 'second' : 'third';
+  const [advType, setAdvType] = useState<'bk' | 'wp' | 'pb' | 'e' | null>(null);
 
-  // Which bases can this runner steal / be CS at?
-  const nextBases: { base: string; label: string }[] = [];
-  if (base === '1') { nextBases.push({ base: '2', label: '2nd' }, { base: '3', label: '3rd' }); }
-  if (base === '2') { nextBases.push({ base: '3', label: '3rd' }, { base: 'H', label: 'Home' }); }
-  if (base === '3') { nextBases.push({ base: 'H', label: 'Home' }); }
+  const baseName = base === '1' ? 'first' : base === '2' ? 'second' : 'third';
+
+  // Bases for SB/CS (next 1–2 bases ahead, no skipping to home from 1st)
+  const sbcsBases: { base: string; label: string }[] = [];
+  if (base === '1') sbcsBases.push({ base: '2', label: '2nd' }, { base: '3', label: '3rd' });
+  if (base === '2') sbcsBases.push({ base: '3', label: '3rd' }, { base: 'H', label: 'Home' });
+  if (base === '3') sbcsBases.push({ base: 'H', label: 'Home' });
+
+  // All forward bases (for BK/WP/PB/Error — can skip bases)
+  const advBases: { base: string; label: string }[] = [];
+  if (base === '1') advBases.push({ base: '2', label: '2nd' }, { base: '3', label: '3rd' }, { base: 'H', label: 'Home' });
+  if (base === '2') advBases.push({ base: '3', label: '3rd' }, { base: 'H', label: 'Home' });
+  if (base === '3') advBases.push({ base: 'H', label: 'Home' });
+
+  const ADV_TYPES = [
+    { type: 'bk' as const, label: 'Balk' },
+    { type: 'wp' as const, label: 'Wild Pitch' },
+    { type: 'pb' as const, label: 'Passed Ball' },
+    { type: 'e' as const, label: 'Error' },
+  ];
 
   return (
     <div
@@ -588,46 +649,80 @@ function RunnerActionPanel({
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="card w-full max-w-xs shadow-2xl border border-navy-600">
+        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-0.5">Runner Event</div>
             <div className="text-base font-bold text-yellow-300">
               {runnerName ?? `Runner #${runnerId}`}
             </div>
-            <div className="text-xs text-slate-500">on {baseLabel} base</div>
+            <div className="text-xs text-slate-500">on {baseName} base</div>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-white text-lg p-1">✕</button>
         </div>
 
         <div className="space-y-3">
+          {/* Stolen Base */}
           <div>
             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Stolen Base</div>
             <div className="flex gap-2">
-              {nextBases.map(({ base: toBase, label }) => (
-                <button
-                  key={toBase}
-                  className="btn-result flex-1 text-sm font-bold"
-                  onClick={() => onSubmit('sb', base, toBase, runnerId)}
-                >
+              {sbcsBases.map(({ base: toBase, label }) => (
+                <button key={toBase} className="btn-result flex-1 text-sm font-bold"
+                  onClick={() => onSubmit('sb', base, toBase, runnerId)}>
                   SB {label}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Caught Stealing */}
           <div>
             <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Caught Stealing</div>
             <div className="flex gap-2">
-              {nextBases.map(({ base: toBase, label }) => (
-                <button
-                  key={toBase}
-                  className="btn-result-out flex-1 text-sm font-bold"
-                  onClick={() => onSubmit('cs', base, toBase, runnerId)}
-                >
+              {sbcsBases.map(({ base: toBase, label }) => (
+                <button key={toBase} className="btn-result-out flex-1 text-sm font-bold"
+                  onClick={() => onSubmit('cs', base, toBase, runnerId)}>
                   CS {label}
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* Advance Runner (BK / WP / PB / Error) */}
+          <div className="border-t border-navy-700 pt-3">
+            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2">Advance Runner</div>
+            <div className="grid grid-cols-4 gap-1.5 mb-3">
+              {ADV_TYPES.map(({ type, label }) => (
+                <button
+                  key={type}
+                  onClick={() => setAdvType(advType === type ? null : type)}
+                  className={`py-1.5 rounded text-xs font-bold border transition-colors ${
+                    advType === type
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-300'
+                      : 'bg-transparent border-navy-600 text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {advType && (
+              <div>
+                <div className="text-xs text-slate-500 mb-2">Advance to:</div>
+                <div className="flex gap-2">
+                  {advBases.map(({ base: toBase, label }) => (
+                    <button
+                      key={toBase}
+                      className="btn-result flex-1 text-sm font-bold"
+                      onClick={() => onAdvance(advType, base, toBase, runnerId)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -727,6 +822,11 @@ function LineupSidebar({
               <span className={`flex-1 truncate text-slate-300 ${entry.position === 'P' ? 'text-blue-300 font-bold' : ''}`}>
                 {entry.player_name ?? `P${entry.player_id}`}
               </span>
+              {entry.defensive_rating && (
+                <span className="font-mono font-bold text-[10px] text-emerald-400 shrink-0">
+                  {entry.defensive_rating}
+                </span>
+              )}
             </div>
           ))}
         </div>
@@ -745,12 +845,12 @@ function shouldEndAfterInning(
   awayScore: number,
   gameInnings: number,
 ): boolean {
-  // Bottom of the last scheduled inning ends
-  if (endedInning === gameInnings && endedHalf === 'bottom') return true;
+  // Bottom of the last scheduled inning ends with a non-tied score
+  if (endedInning === gameInnings && endedHalf === 'bottom' && homeScore !== awayScore) return true;
   // Top of the last scheduled inning ends with the home team already winning
   if (endedInning === gameInnings && endedHalf === 'top' && homeScore > awayScore) return true;
-  // Extra inning bottom half ends with home team still losing
-  if (endedInning > gameInnings && endedHalf === 'bottom' && awayScore > homeScore) return true;
+  // Extra inning bottom half ends with a non-tied score
+  if (endedInning > gameInnings && endedHalf === 'bottom' && homeScore !== awayScore) return true;
   return false;
 }
 

@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { RunnerState, LineupEntry } from '../../types';
 
-type Dest = '1' | '2' | '3' | 'H' | 'out';
+type SafeBase = '1' | '2' | '3' | 'H';
+type Dest = SafeBase | 'out' | 'out:1' | 'out:2' | 'out:3' | 'out:H';
+
+function isOutDest(d: Dest): boolean {
+  return d === 'out' || d === 'out:1' || d === 'out:2' || d === 'out:3' || d === 'out:H';
+}
+
 
 interface RunnerRow {
   playerId: number;
@@ -122,7 +128,7 @@ export default function RunnerAdvancementModal({
 
   const current = runners[idx];
   const dest = outcomes.get(current.playerId) ?? current.defaultDest;
-  const isOut = dest === 'out';
+  const isOut = isOutDest(dest);
 
   const setDest = (d: Dest) =>
     setOutcomes(prev => new Map(prev).set(current.playerId, d));
@@ -143,7 +149,7 @@ export default function RunnerAdvancementModal({
     for (const runner of runners) {
       const d = outcomes.get(runner.playerId) ?? runner.defaultDest;
       if (d === 'H') scored.push(runner.playerId);
-      else if (d !== 'out') runnersAfter[d] = runner.playerId;
+      else if (!isOutDest(d)) runnersAfter[d] = runner.playerId;
     }
 
     onConfirm(runnersAfter, scored.length, scored);
@@ -208,12 +214,38 @@ export default function RunnerAdvancementModal({
                 : 'bg-transparent border-navy-600 text-slate-500 hover:border-slate-400 hover:text-slate-300'
             }`}
             onClick={() => {
-              if (isOut) setDest(current.fromBase); // restore to "stayed" when switching to Safe
+              if (isOut) setDest(current.defaultDest === 'out' ? current.fromBase : current.defaultDest as SafeBase);
             }}
           >
             Safe
           </button>
         </div>
+
+        {/* Out: which base was the tag? */}
+        {isOut && (
+          <div className="mb-5">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Out at…</div>
+            <div className="grid grid-cols-4 gap-2">
+              {(['1', '2', '3', 'H'] as const).map(base => {
+                const outDest: Dest = `out:${base}`;
+                const selected = dest === outDest;
+                return (
+                  <button
+                    key={base}
+                    onClick={() => setDest(selected ? 'out' : outDest)}
+                    className={`py-2.5 rounded-lg text-sm font-bold border transition-colors ${
+                      selected
+                        ? 'bg-red-500/30 border-red-400 text-red-300'
+                        : 'bg-transparent border-navy-600 text-slate-500 hover:border-slate-400 hover:text-slate-300'
+                    }`}
+                  >
+                    {base === 'H' ? 'Home' : baseLabel(base)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Base buttons (only when Safe) */}
         {!isOut && (
