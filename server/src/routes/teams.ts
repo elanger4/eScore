@@ -67,15 +67,15 @@ router.get('/:teamId/players', (req: Request, res: Response) => {
 });
 
 router.post('/:teamId/players', (req: Request, res: Response) => {
-  const { name, jersey_number, positions, bats, throws: throwsHand } = req.body;
+  const { name, jersey_number, positions, bats, throws: throwsHand, defensive_rating, stealing, running } = req.body;
   if (!name) { res.status(400).json({ error: 'name is required' }); return; }
 
   const team = db.prepare('SELECT id FROM teams WHERE id = ?').get(req.params.teamId);
   if (!team) { res.status(404).json({ error: 'Team not found' }); return; }
 
   const result = db.prepare(
-    `INSERT INTO players (team_id, name, jersey_number, positions, bats, throws)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO players (team_id, name, jersey_number, positions, bats, throws, defensive_rating, stealing, running)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     req.params.teamId,
     name,
@@ -83,6 +83,9 @@ router.post('/:teamId/players', (req: Request, res: Response) => {
     JSON.stringify(positions ?? []),
     bats ?? 'R',
     throwsHand ?? 'R',
+    defensive_rating ?? '',
+    stealing ?? '',
+    running ?? '',
   );
 
   const player = db.prepare('SELECT * FROM players WHERE id = ?').get(result.lastInsertRowid) as Player;

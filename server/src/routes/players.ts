@@ -8,16 +8,20 @@ router.put('/:id', (req: Request, res: Response) => {
   const player = db.prepare('SELECT * FROM players WHERE id = ?').get(req.params.id) as Player | undefined;
   if (!player) { res.status(404).json({ error: 'Player not found' }); return; }
 
-  const { name, jersey_number, positions, bats, throws: throwsHand } = req.body;
+  const { name, jersey_number, positions, bats, throws: throwsHand, defensive_rating, stealing, running } = req.body;
 
   db.prepare(
-    `UPDATE players SET name = ?, jersey_number = ?, positions = ?, bats = ?, throws = ? WHERE id = ?`
+    `UPDATE players SET name = ?, jersey_number = ?, positions = ?, bats = ?, throws = ?,
+     defensive_rating = ?, stealing = ?, running = ? WHERE id = ?`
   ).run(
     name ?? player.name,
     jersey_number ?? player.jersey_number,
     JSON.stringify(positions ?? JSON.parse(player.positions as unknown as string)),
     bats ?? player.bats,
     throwsHand ?? player.throws,
+    defensive_rating ?? player.defensive_rating,
+    stealing ?? player.stealing,
+    running ?? player.running,
     req.params.id,
   );
 

@@ -22,7 +22,10 @@ function PlayerForm({ teamId, onDone }: { teamId: number; onDone: () => void }) 
   const [form, setForm] = useState({
     name: '', jersey_number: '', positions: [] as string[],
     bats: 'R' as 'L' | 'R' | 'S', throws: 'R' as 'L' | 'R',
+    defensive_rating: '', stealing: '', running: '',
   });
+
+  const isPitcherOnly = form.positions.length === 1 && form.positions[0] === 'P';
 
   const create = useMutation({
     mutationFn: () => teamsApi.createPlayer(teamId, form),
@@ -71,7 +74,7 @@ function PlayerForm({ teamId, onDone }: { teamId: number; onDone: () => void }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 mb-5">
+      <div className="grid grid-cols-2 gap-3 mb-4">
         <div>
           <label className="label">Bats</label>
           <select className="select" value={form.bats} onChange={e => setForm(f => ({ ...f, bats: e.target.value as 'L' | 'R' | 'S' }))}>
@@ -88,6 +91,26 @@ function PlayerForm({ teamId, onDone }: { teamId: number; onDone: () => void }) 
           </select>
         </div>
       </div>
+
+      {!isPitcherOnly && (
+        <div className="mb-5">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ratings</div>
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="label">Defense</label>
+              <input className="input font-mono" value={form.defensive_rating} onChange={e => setForm(f => ({ ...f, defensive_rating: e.target.value }))} placeholder="A+" />
+            </div>
+            <div>
+              <label className="label">Stealing</label>
+              <input className="input font-mono" value={form.stealing} onChange={e => setForm(f => ({ ...f, stealing: e.target.value }))} placeholder="A+" />
+            </div>
+            <div>
+              <label className="label">Running</label>
+              <input className="input font-mono" value={form.running} onChange={e => setForm(f => ({ ...f, running: e.target.value }))} placeholder="A+" />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex gap-2">
         <button className="btn-primary" onClick={() => create.mutate()} disabled={!form.name || create.isPending}>
@@ -108,6 +131,9 @@ function PlayerRow({ player, teamId }: { player: Player; teamId: number }) {
     positions: player.positions,
     bats: player.bats,
     throws: player.throws,
+    defensive_rating: player.defensive_rating ?? '',
+    stealing: player.stealing ?? '',
+    running: player.running ?? '',
   });
 
   const update = useMutation({
@@ -127,6 +153,8 @@ function PlayerRow({ player, teamId }: { player: Player; teamId: number }) {
         ? f.positions.filter(p => p !== pos)
         : [...f.positions, pos],
     }));
+
+  const isPitcherOnly = form.positions.length === 1 && form.positions[0] === 'P';
 
   if (editing) {
     return (
@@ -157,7 +185,7 @@ function PlayerRow({ player, teamId }: { player: Player; teamId: number }) {
             ))}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="grid grid-cols-2 gap-3 mb-3">
           <div>
             <label className="label">Bats</label>
             <select className="select" value={form.bats} onChange={e => setForm(f => ({ ...f, bats: e.target.value as 'L' | 'R' | 'S' }))}>
@@ -171,6 +199,25 @@ function PlayerRow({ player, teamId }: { player: Player; teamId: number }) {
             </select>
           </div>
         </div>
+        {!isPitcherOnly && (
+          <div className="mb-4">
+            <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2">Ratings</div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="label">Defense</label>
+                <input className="input font-mono" value={form.defensive_rating} onChange={e => setForm(f => ({ ...f, defensive_rating: e.target.value }))} placeholder="A+" />
+              </div>
+              <div>
+                <label className="label">Stealing</label>
+                <input className="input font-mono" value={form.stealing} onChange={e => setForm(f => ({ ...f, stealing: e.target.value }))} placeholder="A+" />
+              </div>
+              <div>
+                <label className="label">Running</label>
+                <input className="input font-mono" value={form.running} onChange={e => setForm(f => ({ ...f, running: e.target.value }))} placeholder="A+" />
+              </div>
+            </div>
+          </div>
+        )}
         <div className="flex gap-2">
           <button className="btn-primary text-xs" onClick={() => update.mutate()}>Save</button>
           <button className="btn-secondary text-xs" onClick={() => setEditing(false)}>Cancel</button>

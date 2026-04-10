@@ -97,6 +97,9 @@ export function runMigrations() {
   };
   addIfMissing('ALTER TABLE players ADD COLUMN default_batting_order INTEGER NOT NULL DEFAULT 0');
   addIfMissing('ALTER TABLE players ADD COLUMN default_position TEXT NOT NULL DEFAULT \'\'');
+  addIfMissing('ALTER TABLE players ADD COLUMN defensive_rating TEXT NOT NULL DEFAULT \'\'');
+  addIfMissing('ALTER TABLE players ADD COLUMN stealing TEXT NOT NULL DEFAULT \'\'');
+  addIfMissing('ALTER TABLE players ADD COLUMN running TEXT NOT NULL DEFAULT \'\'');
 
   console.log('Database migrations complete.');
 }
